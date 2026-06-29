@@ -1,0 +1,124 @@
+name: Security Tests (EEP-SEG-2026-001 v1.2)
+
+on:
+  push:
+    branches: [main, Pruebas]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Pruebas Unitarias (Caja Blanca - Jest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Ejecutar suite de seguridad (Jest)
+        run: npx jest --testPathPattern="auth.service.spec|users.service.spec|jwt.strategy.spec|orders.service.spec" --coverage --verbose
+        continue-on-error: true   # 5 regresiones intencionales documentadas (Seccion 9 EEP v1.2)
+
+      - name: Validar conteo de regresiones intencionales
+        run: bash scripts/validate-jest-regressions.sh
+        continue-on-error: true   # informativo: alerta si el conteo de fallas != 5
+
+      - name: Subir reporte de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-coverage-report
+          path: coverage/
+
+  static-checks:
+    name: Verificaciones Estaticas (TC-SEG-CI-A2-01, TC-SEG-AA-A3-03)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ejecutar checks estaticos
+        run: bash scripts/static-security-checks.sh
+        continue-on-error: true   # WT-001 y WT-002 son hallazgos ya confirmados, no errores de CI
+
+  black-box-tests:
+    name: Pruebas Caja Negra (Postman/Newman)
+    runs-on: ubuntu-latest
+    needs: [unit-tests, static-checks]
+    services:
+      mariadb:
+        image: mariadb:latest
+        env:
+          MYSQL_DATABASE: easyweb
+          MYSQL_USER: aharon
+          MYSQL_PASSWORD: 1234
+          MYSQL_ROOT_PASSWORD: 1234
+        ports:
+          - 3308:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Migrar base de datos (Prisma)
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: mysql://aharon:1234@localhost:3308/easyweb
+
+      - name: Cargar seeds (usuarios + ordenes cruzadas)
+        run: npx prisma db seed
+        env:
+          DATABASE_URL: mysql://aharon:1234@localhost:3308/easyweb
+
+      - name: Compilar backend (nest build)
+        run: npm run build
+
+      - name: Levantar backend en background
+        run: npm run start:prod &
+        env:
+          DATABASE_URL: mysql://aharon:1234@localhost:3308/easyweb
+
+      - name: Esperar a que el backend responda
+        run: npx wait-on http://localhost:3000/auth/login -t 30000 --http-methods POST || sleep 10
+
+      - name: Instalar Newman
+        run: npm install -g newman
+
+      - name: Ejecutar coleccion Postman (TC-SEG caja negra)
+        run: |
+          mkdir -p results
+          newman run test/EasyWeb-Security-Tests.postman_collection.json \
+            -e test/security-environment.postman_environment.json \
+            --reporters cli,junit \
+            --reporter-junit-export results/newman-report.xml
+        continue-on-error: true   # varios casos documentan FALLAS confirmadas (Seccion 9 del EEP v1.2)
+
+      - name: Subir reporte Newman
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-security-report
+          path: results/

@@ -1,0 +1,499 @@
+{
+  "info": {
+    "name": "EasyWeb Security Tests (EEP-SEG-2026-001 v1.2)",
+    "description": "Coleccion de pruebas de caja negra (TC-SEG) para el backend EasyWeb. Varios casos documentan FALLAS confirmadas (WT-001, WT-003, WT-007, WT-011, WT-012, WT-013): se espera que fallen hasta que desarrollo corrija el codigo. No modificar las aserciones para que pasen.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Obtiene JWTs frescos para admin, client A (aharon) y client B (josue).",
+          "// El endpoint POST /auth/login responde 201 (default de NestJS para @Post).",
+          "const loginAndGetToken = (email, password, varName) => {",
+          "  pm.sendRequest({",
+          "    url: pm.environment.get('base_url') + '/auth/login',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/json' },",
+          "    body: { mode: 'raw', raw: JSON.stringify({ email, password }) }",
+          "  }, (err, res) => {",
+          "    if (!err && (res.code === 200 || res.code === 201)) {",
+          "      pm.environment.set(varName, res.json().accessToken);",
+          "    }",
+          "  });",
+          "};",
+          "",
+          "loginAndGetToken(pm.environment.get('admin_email'), pm.environment.get('admin_password'), 'jwt_admin');",
+          "loginAndGetToken(pm.environment.get('client_a_email'), pm.environment.get('client_a_password'), 'jwt_client_a');",
+          "loginAndGetToken(pm.environment.get('client_b_email'), pm.environment.get('client_b_password'), 'jwt_client_b');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Dimension 1 - Confidencialidad e Integridad",
+      "item": [
+        {
+          "name": "TC-SEG-CI-A1-01 - Rechazo de payloads invalidos",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"username\":\"x\"}" },
+            "url": { "raw": "{{base_url}}/users/create", "host": ["{{base_url}}"], "path": ["users", "create"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-CI-A1-01: payload sin campos requeridos debe retornar 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-CI-A1-02 - Rechazo de inyeccion SQL en campos de texto",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"username\":\"'; DROP TABLE users; --\",\"email\":\"\\\" OR '1'='1\",\"password\":\"123456\",\"rolId\":2}" },
+            "url": { "raw": "{{base_url}}/users/create", "host": ["{{base_url}}"], "path": ["users", "create"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-CI-A1-02: la respuesta no debe exponer errores de Prisma/MariaDB', function () {",
+                  "    pm.expect(pm.response.text()).to.not.match(/prisma|mariadb|sql syntax/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-CI-A3-01 - Hash bcrypt al registrar (no texto plano)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"username\":\"hashcheck_user\",\"email\":\"hashcheck@test.com\",\"password\":\"MiPassword123!\",\"rolId\":2}" },
+            "url": { "raw": "{{base_url}}/users/create", "host": ["{{base_url}}"], "path": ["users", "create"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-CI-A3-01: la respuesta de creacion no debe devolver la contrasena en texto plano', function () {",
+                  "    pm.expect(pm.response.text()).to.not.include('MiPassword123!');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-CI-A3-02 - Autenticacion con contrasena hasheada",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\":\"{{client_a_email}}\",\"password\":\"{{client_a_password}}\"}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-CI-A3-02: login valido retorna 200/201 y accessToken', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "    pm.expect(pm.response.json()).to.have.property('accessToken');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-CI-A4-01 - Exclusion de campos sensibles en login (WT-003: FALLA esperada)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\":\"{{client_a_email}}\",\"password\":\"{{client_a_password}}\"}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada hasta corregir WT-003: login retorna userInfo con el hash de password.",
+                  "pm.test('TC-SEG-CI-A4-01: la respuesta de login NO debe incluir el campo password', function () {",
+                  "    var json = pm.response.json();",
+                  "    if (json.userInfo) {",
+                  "        pm.expect(json.userInfo).to.not.have.property('password');",
+                  "    } else {",
+                  "        pm.expect(json).to.not.have.property('password');",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-CI-A4-02 - Errores sin informacion estructural",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/orders/999999", "host": ["{{base_url}}"], "path": ["orders", "999999"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-CI-A4-02: el error no debe exponer stack traces ni nombres de tablas/columnas', function () {",
+                  "    pm.expect(pm.response.text()).to.not.match(/at .*\\(.*\\.ts|node_modules|prisma\\.|stack/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dimension 2 - Autenticacion y Autorizacion",
+      "item": [
+        {
+          "name": "TC-SEG-AA-A1-01 - Mismo recurso para rol client y admin (WT-011: FALLA esperada)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_client_a}}" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Revisado v1.2: no existe RolesGuard (WT-011). Se documenta que un client",
+                  "// accede a /orders igual que un admin. Diseno original espera diferenciacion;",
+                  "// FALLA esperada porque el sistema responde 200 sin distincion de rol.",
+                  "pm.test('TC-SEG-AA-A1-01: deberia existir control de rol (hoy responde 200 sin distincion)', function () {",
+                  "    pm.expect(pm.response.code).to.not.equal(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A1-02 - JWT manipulado con firma invalida rechazado",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjk5OSwicm9sZSI6ImFkbWluIn0.invalidsignature" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// NOTA: depende de @UseGuards(JwtAuthGuard) activo (WT-007). Hoy /orders no tiene guard,",
+                  "// por lo que este caso tambien documentara FALLA hasta descomentar el guard.",
+                  "pm.test('TC-SEG-AA-A1-02: token con firma invalida debe retornar 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A2-01 - IDOR: acceso a orden de otro usuario (WT-012/WT-013: FALLA esperada)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_client_a}}" }],
+            "url": { "raw": "{{base_url}}/orders/{{order_id_client_b}}", "host": ["{{base_url}}"], "path": ["orders", "{{order_id_client_b}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada (IDOR): client A puede leer la orden de client B porque no hay",
+                  "// filtrado por propietario ni guard activo (WT-012/WT-013/WT-007).",
+                  "pm.test('TC-SEG-AA-A2-01: client A no debe acceder a la orden de client B (403/404)', function () {",
+                  "    pm.expect([403, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A2-02 - Listado /orders filtrado por propietario (WT-012: FALLA esperada)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_client_a}}" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada: findAll() no filtra por usuario (WT-012). El listado de client A",
+                  "// incluye ordenes de client B.",
+                  "pm.test('TC-SEG-AA-A2-02: el listado de client A no debe contener ordenes de client B', function () {",
+                  "    var orders = pm.response.json();",
+                  "    var idB = parseInt(pm.environment.get('order_id_client_b'), 10);",
+                  "    var ids = Array.isArray(orders) ? orders.map(function (o) { return o.id; }) : [];",
+                  "    pm.expect(ids).to.not.include(idB);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A2-03 - Auto-asignacion de rol admin en registro (WT-013: FALLA esperada)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"username\":\"attacker_admin\",\"email\":\"attacker_admin@test.com\",\"password\":\"123456\",\"rolId\":1}" },
+            "url": { "raw": "{{base_url}}/users/create", "host": ["{{base_url}}"], "path": ["users", "create"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada (WT-013): CreateUserDto.rolId se acepta sin restriccion,",
+                  "// permitiendo autorregistro como admin (rolId=1).",
+                  "pm.test('TC-SEG-AA-A2-03: el sistema NO debe permitir auto-asignacion de rol admin', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.rolId).to.not.equal(1);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A3-01 - Token expirado rechazado",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImlhdCI6MTUwMDAwMDAwMCwiZXhwIjoxNTAwMDAwMDAxfQ.expiredsig" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Depende de guard activo (WT-007). FALLA esperada hasta descomentar @UseGuards.",
+                  "pm.test('TC-SEG-AA-A3-01: token expirado debe retornar 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A3-02 - Token firmado con secreto incorrecto rechazado",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjF9.hacked_secret_signature" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Depende de guard activo (WT-007). FALLA esperada hasta descomentar @UseGuards.",
+                  "pm.test('TC-SEG-AA-A3-02: token con secreto incorrecto debe retornar 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A4-01 - GET /orders sin token (WT-007: FALLA esperada)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada hasta descomentar @UseGuards(JwtAuthGuard) en orders.controller.ts (WT-007).",
+                  "pm.test('TC-SEG-AA-A4-01: debe retornar 401 sin token', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-AA-A4-02 - Token malformado rechazado",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer invalidstring" }],
+            "url": { "raw": "{{base_url}}/orders", "host": ["{{base_url}}"], "path": ["orders"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Depende de guard activo (WT-007). Debe retornar 401 sin 500 no controlado.",
+                  "pm.test('TC-SEG-AA-A4-02: token malformado debe retornar 401 (no 500)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dimension 3 - Responsabilidad y No Repudio",
+      "item": [
+        {
+          "name": "TC-SEG-RNR-A1-01 - Operacion critica responde (trazabilidad)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\":\"{{admin_email}}\",\"password\":\"{{admin_password}}\"}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// No existe sistema de logging (WT/3.1). Este caso documenta la operacion critica;",
+                  "// la verificacion de la entrada de log es manual sobre la consola del backend.",
+                  "pm.test('TC-SEG-RNR-A1-01: la operacion critica de login responde', function () {",
+                  "    pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-RNR-A2-01 - Login no debe filtrar la contrasena en la respuesta",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"email\":\"{{client_b_email}}\",\"password\":\"{{client_b_password}}\"}" },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-RNR-A2-01: la contrasena en texto plano no debe aparecer en la respuesta', function () {",
+                  "    pm.expect(pm.response.text()).to.not.include(pm.environment.get('client_b_password'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-RNR-A2-02 - Update de usuario no debe devolver la nueva contrasena",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"password\":\"NuevaPass123!\"}" },
+            "url": { "raw": "{{base_url}}/users/2", "host": ["{{base_url}}"], "path": ["users", "2"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('TC-SEG-RNR-A2-02: la nueva contrasena no debe aparecer en la respuesta', function () {",
+                  "    pm.expect(pm.response.text()).to.not.include('NuevaPass123!');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-RNR-A4-01 - Update ignora clientId del body (depende de guard)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_client_a}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\"clientId\":3}" },
+            "url": { "raw": "{{base_url}}/orders/{{order_id_client_a}}", "host": ["{{base_url}}"], "path": ["orders", "{{order_id_client_a}}"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada: sin guard ni contexto req.user, el clientId del body se persiste (WT-007).",
+                  "pm.test('TC-SEG-RNR-A4-01: la orden no debe cambiar de propietario via body', function () {",
+                  "    var json = pm.response.json();",
+                  "    pm.expect(json.clientId).to.not.equal(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "TC-SEG-RNR-A4-02 - Delete usa contexto del token, no query param (depende de guard)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_client_a}}" }],
+            "url": {
+              "raw": "{{base_url}}/orders/{{order_id_client_b}}?userId={{order_id_client_a}}",
+              "host": ["{{base_url}}"],
+              "path": ["orders", "{{order_id_client_b}}"],
+              "query": [{ "key": "userId", "value": "{{order_id_client_a}}" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// FALLA esperada: sin guard, client A puede eliminar la orden de client B (WT-007/WT-013).",
+                  "pm.test('TC-SEG-RNR-A4-02: client A no debe poder eliminar la orden de client B (403/404)', function () {",
+                  "    pm.expect([403, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

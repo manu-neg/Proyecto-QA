@@ -75,6 +75,40 @@ async function main() {
     },
   });
 
+  // Órdenes para pruebas de IDOR (TC-SEG-AA-A2-01, TC-SEG-AA-A2-02)
+  const orderA1 = await prisma.orders.create({
+    data: {
+      title: 'Orden de aharon 1',
+      description: 'Orden de prueba IDOR',
+      typeOrder: 'standard',
+      clientId: user2.id, // aharon
+    },
+  });
+  const orderA2 = await prisma.orders.create({
+    data: {
+      title: 'Orden de aharon 2',
+      description: 'Orden de prueba IDOR',
+      typeOrder: 'standard',
+      clientId: user2.id, // aharon
+    },
+  });
+  const orderB1 = await prisma.orders.create({
+    data: {
+      title: 'Orden de josue 1',
+      description: 'Orden de prueba IDOR',
+      typeOrder: 'standard',
+      clientId: user3.id, // josue
+    },
+  });
+  const orderB2 = await prisma.orders.create({
+    data: {
+      title: 'Orden de josue 2',
+      description: 'Orden de prueba IDOR',
+      typeOrder: 'standard',
+      clientId: user3.id, // josue
+    },
+  });
+
   const msg1 = prisma.chat.upsert({
     where: { id: 1 },
     update: {
