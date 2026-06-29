@@ -2,8 +2,8 @@
 # scripts/validate-jest-regressions.sh
 npx jest --testPathPattern="auth.service.spec|users.service.spec|jwt.strategy.spec|orders.service.spec" --json --outputFile=jest-results.json || true
 
-FAILED_COUNT=$(jq '[.testResults[].testResults[] | select(.status=="failed")] | length' jest-results.json)
-TOTAL_COUNT=$(jq '[.testResults[].testResults[]] | length' jest-results.json)
+FAILED_COUNT=$(jq '.numFailedTests // 0' jest-results.json)
+TOTAL_COUNT=$(jq '.numTotalTests // 0' jest-results.json)
 EXPECTED_FAILURES=5   # TC-SEG-CI-SRV-001, TC-SEG-AA-CTR-003, TC-SEG-CI-DAT-004, TC-SEG-RNR-DAT-001, TC-SEG-RNR-DAT-004
 
 # Si no se ejecuto ningun test (suites que no compilan), FAILED_COUNT viene vacio/0:

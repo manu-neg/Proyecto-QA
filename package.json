@@ -80,6 +80,7 @@
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"
     },
+    "restoreMocks": true,
     "collectCoverageFrom": [
       "**/*.(t|j)s"
     ],
