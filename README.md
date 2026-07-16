@@ -1,3 +1,43 @@
+# Gobernanza de ramas — evidencia de pruebas
+
+> **La rama `Pruebas` es la fuente de verdad de toda la evidencia de pruebas dinámicas del proyecto
+> (unitarias, integración y caja negra). La rama `main` no se usa para este propósito.**
+
+Esta declaración cierra los hallazgos **H-TEST-01** y **H-TEST-05** (Informe de Pruebas — Análisis de
+Brechas por Nivel), que señalaban que ningún documento indicaba cuál rama era la oficial para la
+ejecución de pruebas, mientras la EEP citaba `main` como verificada.
+
+| Aspecto | Decisión |
+| --- | --- |
+| Rama oficial de evidencia | `Pruebas` |
+| Rol de `main` | Código de producto. No se ejecuta ni se reporta evidencia de pruebas sobre ella. |
+| CI | El workflow `Security Tests` corre en cada `push` a `Pruebas` (y a `main`). |
+| Opción adoptada | **Opción B** del Plan de cierre — declarar `Pruebas` como oficial sin fusionar. |
+
+Consecuencia documentada: el nivel de Integración se reporta como **"Logrado con salvedades"**, siendo
+la salvedad que la ejecución no ocurre sobre `main`. No bloquea el cierre porque `main` no contiene
+evidencia de pruebas por decisión explícita del equipo, no por omisión.
+
+## Cómo correr las pruebas
+
+```bash
+docker compose up -d                 # MariaDB en localhost:3308
+npx prisma migrate deploy            # aplica el esquema
+npx prisma db seed                   # usuarios + órdenes cruzadas (IDOR)
+
+npm test                             # unitarias  — 17 tests: 12 PASA / 5 FALLA esperadas
+npm run test:integration             # integración — 13 tests: 4 PASA / 9 FALLA esperadas
+bash scripts/validate-jest-regressions.sh        # puerta: exactamente 5 fallas unitarias
+bash scripts/validate-integration-failures.sh    # puerta: exactamente los 8 TC-IDs documentados
+```
+
+> **Las fallas son esperadas y NO deben "arreglarse" en las pruebas.** Reproducen defectos confirmados
+> (principalmente **WT-007**: `@UseGuards(JwtAuthGuard)` comentado). Pasarán a verde solas cuando
+> desarrollo corrija el código de producción. Si una prueba de este conjunto pasa sin que nadie haya
+> tocado `src/`, el defecto está en la prueba, no en el sistema.
+
+---
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="200" alt="Nest Logo" /></a>
 </p>

@@ -17,6 +17,8 @@ lerna-debug.log*
 # Tests
 /coverage
 /.nyc_output
+jest-results.json
+integration-results.json
 
 # IDEs and editors
 /.idea

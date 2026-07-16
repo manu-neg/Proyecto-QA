@@ -40,6 +40,67 @@ jobs:
           name: jest-coverage-report
           path: coverage/
 
+  integration-tests:
+    name: Pruebas de Integracion (Supertest)
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:latest
+        env:
+          MYSQL_DATABASE: easyweb
+          MYSQL_USER: aharon
+          MYSQL_PASSWORD: 1234
+          MYSQL_ROOT_PASSWORD: 1234
+        ports:
+          - 3308:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: mysql://aharon:1234@localhost:3308/easyweb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - name: Migrar base de datos (Prisma)
+        run: npx prisma migrate deploy
+
+      - name: Cargar seeds (usuarios + ordenes cruzadas)
+        run: npx prisma db seed
+
+      # No hace falta levantar el backend: Supertest monta la app en proceso
+      # (test/integration/helpers/bootstrap.ts replica src/main.ts).
+      - name: Ejecutar suite de integracion (Supertest)
+        run: npm run test:integration -- --verbose
+        continue-on-error: true   # 8 fallas esperadas: 7 por WT-007 + TC-SEG-CI-A1-02 (CWE-20)
+
+      # Puerta REAL (sin continue-on-error): verifica que fallen EXACTAMENTE los
+      # 8 casos documentados. Falla el build si aparece una falla nueva, si un
+      # caso esperado deja de fallar (p. ej. desarrollo corrigio WT-007 -> hay
+      # que actualizar el informe), o si algo falla por error de arnes.
+      - name: Validar conjunto exacto de fallas esperadas
+        run: bash scripts/validate-integration-failures.sh
+
+      - name: Subir resultados de integracion
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-report
+          path: integration-results.json
+
   static-checks:
     name: Verificaciones Estaticas (TC-SEG-CI-A2-01, TC-SEG-AA-A3-03)
     runs-on: ubuntu-latest
