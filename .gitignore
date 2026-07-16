@@ -16,6 +16,7 @@ lerna-debug.log*
 
 # Tests
 /coverage
+coverage-integration/
 /.nyc_output
 jest-results.json
 integration-results.json

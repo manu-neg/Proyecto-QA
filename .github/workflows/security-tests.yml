@@ -84,7 +84,7 @@ jobs:
       # No hace falta levantar el backend: Supertest monta la app en proceso
       # (test/integration/helpers/bootstrap.ts replica src/main.ts).
       - name: Ejecutar suite de integracion (Supertest)
-        run: npm run test:integration -- --verbose
+        run: npm run test:integration -- --verbose --coverage
         continue-on-error: true   # 8 fallas esperadas: 7 por WT-007 + TC-SEG-CI-A1-02 (CWE-20)
 
       # Puerta REAL (sin continue-on-error): verifica que fallen EXACTAMENTE los
@@ -99,7 +99,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-test-report
-          path: integration-results.json
+          path: |
+            integration-results.json
+            coverage-integration/
 
   static-checks:
     name: Verificaciones Estaticas (TC-SEG-CI-A2-01, TC-SEG-AA-A3-03)

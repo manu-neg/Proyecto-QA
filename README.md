@@ -3,9 +3,9 @@
 > **La rama `Pruebas` es la fuente de verdad de toda la evidencia de pruebas dinámicas del proyecto
 > (unitarias, integración y caja negra). La rama `main` no se usa para este propósito.**
 
-Esta declaración cierra los hallazgos **H-TEST-01** y **H-TEST-05** (Informe de Pruebas — Análisis de
-Brechas por Nivel), que señalaban que ningún documento indicaba cuál rama era la oficial para la
-ejecución de pruebas, mientras la EEP citaba `main` como verificada.
+Esta declaración deja constancia **en el repositorio** de una decisión que el equipo ya había
+confirmado a nivel documental (Informe de Pruebas — Análisis de Brechas por Nivel v2, §0 fila 5,
+16/07/2026), de modo que sea verificable leyendo el código sin tener que consultar Confluence.
 
 | Aspecto | Decisión |
 | --- | --- |
@@ -14,9 +14,11 @@ ejecución de pruebas, mientras la EEP citaba `main` como verificada.
 | CI | El workflow `Security Tests` corre en cada `push` a `Pruebas` (y a `main`). |
 | Opción adoptada | **Opción B** del Plan de cierre — declarar `Pruebas` como oficial sin fusionar. |
 
-Consecuencia documentada: el nivel de Integración se reporta como **"Logrado con salvedades"**, siendo
-la salvedad que la ejecución no ocurre sobre `main`. No bloquea el cierre porque `main` no contiene
-evidencia de pruebas por decisión explícita del equipo, no por omisión.
+**No es el cierre de un hallazgo.** H-TEST-05 fue *retirado* el 16/07/2026 y la salvedad de gobernanza
+de rama se retiró de todos los niveles, al confirmar el equipo que trabajar en `Pruebas` fue una
+decisión deliberada y correcta del proyecto, no una brecha de calidad. Por lo tanto esta declaración
+**no genera ninguna salvedad** sobre la calificación de ningún nivel: solo hace explícito en el
+repositorio lo que ya era una decisión aceptada.
 
 ## Cómo correr las pruebas
 
@@ -27,6 +29,7 @@ npx prisma db seed                   # usuarios + órdenes cruzadas (IDOR)
 
 npm test                             # unitarias  — 17 tests: 12 PASA / 5 FALLA esperadas
 npm run test:integration             # integración — 13 tests: 4 PASA / 9 FALLA esperadas
+npm run test:integration -- --coverage   # cobertura de integración sobre src/
 bash scripts/validate-jest-regressions.sh        # puerta: exactamente 5 fallas unitarias
 bash scripts/validate-integration-failures.sh    # puerta: exactamente los 8 TC-IDs documentados
 ```
